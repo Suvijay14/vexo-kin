@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vexo · People</title>
+<style>
+  :root { --bg:#f6f4ef; --card:#fffdf8; --ink:#1f1d1a; --muted:#8a8478; --line:#e7e2d7;
+          --accent:#e0a526; --soft:#fbf3dd; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, sans-serif;
+         color:var(--ink); background:var(--bg); height:100vh; display:grid;
+         grid-template-columns: 220px minmax(0,1fr) 340px; overflow:hidden; }
+  aside, main, section { overflow:auto; min-width:0; }
+  aside { border-right:1px solid var(--line); padding:18px 10px; }
+  aside h1 { font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:4px 10px 14px; }
+  .person { padding:10px 12px; border-radius:10px; cursor:pointer; margin-bottom:2px; }
+  .person:hover { background:#efebe2; }
+  .person.active { background:var(--accent); color:#fff; }
+  .person .sub { font-size:12px; opacity:.7; }
+  main { padding:34px 44px; background:var(--card); }
+  main h2 { font-size:30px; margin:0 0 2px; }
+  .meta { color:var(--muted); font-size:13px; margin-bottom:26px; }
+  .cat { margin-bottom:22px; }
+  .cat h3 { font-size:13px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin:0 0 8px; }
+  .note { padding:8px 0; border-bottom:1px solid var(--line); display:flex; gap:10px; }
+  .note .t { flex:1; }
+  .note .q { color:var(--muted); font-size:13px; font-style:italic; }
+  .note .d { color:var(--muted); font-size:12px; white-space:nowrap; }
+  .note button { border:0; background:none; color:#c9c2b4; cursor:pointer; }
+  .new { animation: glow 2.5s ease-out; }
+  @keyframes glow { from { background:var(--soft); } to { background:transparent; } }
+  section { border-left:1px solid var(--line); padding:18px; }
+  section h4 { font-size:13px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin:6px 0 10px; }
+  .nudge { background:var(--soft); border-radius:12px; padding:12px 14px; margin-bottom:10px; }
+  .nudge b { display:block; }
+  .nudge small { color:var(--muted); }
+  .line { font-size:13px; padding:4px 0; }
+  .line b { font-weight:600; }
+  .empty { color:var(--muted); }
+  .rename { font-size:13px; margin-left:10px; }
+  form { display:flex; gap:6px; margin-top:14px; }
+  input { flex:1; min-width:0; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; font:inherit; font-size:13px; }
+  form button { padding:8px 12px; border:0; border-radius:8px; background:var(--ink); color:#fff; cursor:pointer; }
+</style>
+</head>
+<body>
+<aside><h1>People</h1><div id="people"></div></aside>
+<main id="profile"><p class="empty">Start talking. People you speak with will appear here.</p></main>
+<section>
+  <h4>Right now</h4><div id="nudges"></div>
+  <h4 style="margin-top:22px">Live conversation</h4><div id="transcript"></div>
+  <form id="say">
+    <input id="speaker" placeholder="Who" style="flex:0 0 80px">
+    <input id="text" placeholder="Type a line (demo mode)">
+    <button>Say</button>
+  </form>
+</section>
+<script>
+const ICON = { mood:"🌤️ Right now", favorite:"⭐ Favorites", dislike:"🚫 Dislikes", wish:"🎁 Wishes", date:"📅 Dates",
+  life_now:"🌱 Life right now", people_pets:"🐾 People & pets", follow_up:"🔁 Follow-ups",
+  memory:"💛 Shared memories", about:"👋 About" };
+let current = null, seen = new Set(), first = true;
+const esc = s => (s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const post = (u, d) => fetch(u, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(d)});
+
+async function refresh() {
+  let s; try { s = await (await fetch("/api/state")).json(); } catch { return; }
+  const people = Object.values(s.people).sort((a,b) => (b.last_seen||"").localeCompare(a.last_seen||""));
+  if (!current && people.length) current = people[0].name;
+  document.getElementById("people").innerHTML = people.map(p =>
+    `<div class="person ${p.name===current?"active":""}" data-n="${esc(p.name)}">${esc(p.name)}
+     <div class="sub">${p.notes.length} notes</div></div>`).join("") || '<p class="empty" style="padding:0 10px">Nobody yet</p>';
+  document.querySelectorAll(".person").forEach(el => el.onclick = () => { current = el.dataset.n; refresh(); });
+
+  const p = s.people[current];
+  if (p) {
+    const groups = {};
+    p.notes.forEach(n => (groups[n.category] ??= []).push(n));
+    document.getElementById("profile").innerHTML =
+      `<h2><span id="st" style="cursor:pointer" title="Close friend">${p.starred ? "⭐" : "☆"}</span> ${esc(p.name)}${p.name.startsWith("New person") ? '<button class="rename" id="rn">Who is this?</button>' : ""}</h2>
+       <div class="meta">First met ${esc(p.first_seen?.replace("T"," "))} · last talked ${esc((p.last_seen||"—").replace("T"," "))}</div>` +
+      (Object.keys(ICON).filter(c => groups[c]).map(c => `<div class="cat"><h3>${ICON[c]}</h3>` +
+        groups[c].map(n => `<div class="note ${!first && !seen.has(n.id) ? "new" : ""}"><div class="t">${esc(n.text)}
+          <div class="q">“${esc(n.quote)}”</div></div>
+          <div class="d">${n.event_date ? "📅 "+esc(n.event_date)+"<br>" : ""}heard ${esc(n.heard)}</div>
+          <button title="Forget this" data-id="${n.id}">✕</button></div>`).join("") + "</div>").join("")
+       || '<p class="empty">Nothing yet. Keep talking.</p>');
+    document.querySelectorAll(".note button").forEach(b => b.onclick = () => post("/api/delete_note", {person:current, id:b.dataset.id}).then(refresh));
+    document.getElementById("st").onclick = () => post("/api/star", {person:current}).then(refresh);
+    const rn = document.getElementById("rn");
+    if (rn) rn.onclick = () => { const n = prompt("Name for this voice?"); if (n) post("/api/rename", {old:current, new:n}).then(() => { current = n; refresh(); }); };
+  }
+  Object.values(s.people).forEach(pp => pp.notes.forEach(n => seen.add(n.id)));
+  first = false;
+
+  document.getElementById("nudges").innerHTML = s.nudges.slice(0,6).map(n =>
+    `<div class="nudge"><b>${esc(n.person)} · ${esc(n.when)}</b>${esc(n.note.text)}${n.suggestion ? `<br><b style="display:inline">💡 ${esc(n.suggestion)}</b>` : ""}<br><small>“${esc(n.note.quote)}”</small></div>`).join("")
+    || '<p class="empty">No nudges yet.</p>';
+  document.getElementById("transcript").innerHTML = s.transcript.slice(-12).map(l =>
+    `<div class="line"><b>${esc(l.speaker)}</b>${l.score ? ` <small style="color:#aaa">${l.score}</small>` : ""}: ${esc(l.text)}</div>`).join("")
+    || '<p class="empty">Waiting for speech…</p>';
+}
+document.getElementById("say").onsubmit = e => {
+  e.preventDefault();
+  const sp = document.getElementById("speaker").value || "Maya", t = document.getElementById("text");
+  if (t.value) post("/api/say", {speaker:sp, text:t.value}); t.value = "";
+};
+refresh(); setInterval(refresh, 1500);
+</script>
+</body>
+</html>

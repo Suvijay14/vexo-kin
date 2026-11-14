@@ -1,0 +1,8 @@
+flask
+requests
+numpy
+openai
+resemblyzer
+sounddevice
+av
+bleak

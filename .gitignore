@@ -1,3 +1,5 @@
 .env
 data/
+_archive_old_build/data/
 __pycache__/
+node_modules/

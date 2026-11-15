@@ -82,5 +82,31 @@ def rename(old: str, new: str):
         _save(prints)
 
 
+def merge(old: str, new: str) -> None:
+    prints = _load()
+    old_emb = prints.pop(old, None)
+    if old_emb is None:
+        return
+    if new in prints:
+        combined = prints[new] + old_emb
+        prints[new] = combined / np.linalg.norm(combined)
+    else:
+        prints[new] = old_emb / np.linalg.norm(old_emb)
+    _save(prints)
+
+
+def next_new_name() -> str:
+    import profiles
+
+    prints = _load()
+    db = profiles.snapshot()
+    aliases = db.get("aliases", {})
+    used = set(prints) | set(db.get("people", {})) | set(aliases) | set(aliases.values())
+    n = 1
+    while f"New person {n}" in used:
+        n += 1
+    return f"New person {n}"
+
+
 def enrolled() -> list:
     return sorted(_load().keys())

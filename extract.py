@@ -3,6 +3,8 @@
 Input:  who said it, what they said, recent context
 Output: list of notes: {category, text, quote, event_date, expires_in_days}
 """
+from __future__ import annotations
+
 import datetime as dt
 import json
 
@@ -27,7 +29,12 @@ friend would remember about the OTHER person.
 
 Today is {{today}}. The wearer is called "{config.WEARER_NAME}".
 
-Return JSON: {{{{"notes": [ ... ]}}}} where each note is
+Return JSON: {{{{"notes": [ ... ],
+   "addressed_name": first name of who the speaker talks TO by direct address only
+                   ("Hi Suvijay", "Suvijay, did you...", "thanks Maya!"), or null when
+                   someone is only mentioned ("I saw Suvijay yesterday"),
+   "self_name": speaker's own first name if they introduce themselves
+                ("I'm Leo", "my name is Leo"), else null}}}} where each note is
 {{{{"person": name the note is about,
    "category": one of {CATEGORIES},
    "text": short note in third person, under 12 words,
@@ -79,5 +86,10 @@ def extract(speaker: str, text: str, context: list[str], other_person: str | Non
         temperature=0.2,
     )
     data = json.loads(resp.choices[0].message.content or "{}")
+    try:
+        import naming
+        naming.observe(speaker, data.get("addressed_name"), data.get("self_name"))
+    except Exception:
+        pass
     notes = [n for n in data.get("notes", []) if n.get("category") in CATEGORIES]
     return notes

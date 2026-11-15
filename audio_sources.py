@@ -88,40 +88,125 @@ def _kit_on_path():
         sys.path.insert(0, kit_python)
 
 
+class BandSession:
+    """One band connection: live utterances or enrollment on the same link."""
+
+    def __init__(self, handle):
+        self.handle = handle
+        self.band = None
+        self._decoder = None
+        self._seg = None
+        self._q = None
+        self._live = True
+        self._enrolling = False
+        self._enroll_buf: list[np.ndarray] = []
+        self._lock = threading.Lock()
+
+    def _on_audio(self, event):
+        pcm = self._decoder.feed(event)
+        if not pcm:
+            return
+        chunk = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768
+        with self._lock:
+            if self._enrolling:
+                self._enroll_buf.append(chunk)
+            elif self._live:
+                self._seg.feed(chunk)
+
+    def connect(self):
+        if not config.BAND_NUMBER:
+            raise SystemExit("Set BAND_NUMBER in .env (the number on your bag). Never guess, never 42.")
+        _kit_on_path()
+        from vexo_open.sync import Band
+        from vexo_open.audio import PcmDecoder
+
+        self._decoder = PcmDecoder()
+        self._q = queue.Queue()
+        threading.Thread(target=_worker, args=(self._q, self.handle), daemon=True).start()
+        self._seg = Segmenter(self._q.put)
+
+        transport = "serial" if config.BAND_TRANSPORT == "usb" else config.BAND_TRANSPORT
+        band = Band.connect(int(config.BAND_NUMBER), transport=transport)
+        if band.number != int(config.BAND_NUMBER):  # kit rule: always verify it's OUR band
+            band.disconnect()
+            raise SystemExit(f"Connected to band {band.number}, not ours ({config.BAND_NUMBER}). Stopped.")
+        band.on("audio", self._on_audio)
+        self.band = band
+        return band
+
+    def start_mic(self):
+        if not self.band:
+            raise RuntimeError("not connected")
+        self.band.configure(audio=True)
+        print("Band microphone is ON (blue light). Tell people nearby: voices go to Deepgram.")
+
+    def set_live(self, on: bool):
+        with self._lock:
+            self._live = on
+
+    def record_seconds(self, seconds: float) -> np.ndarray:
+        if not self.band:
+            raise RuntimeError("not connected")
+        with self._lock:
+            self._live = False
+            self._enrolling = True
+            self._enroll_buf = []
+        try:
+            self.band.wait(seconds)
+        finally:
+            with self._lock:
+                self._enrolling = False
+                chunks = self._enroll_buf
+                self._enroll_buf = []
+                self._live = True
+        if not chunks:
+            return np.array([], dtype=np.float32)
+        return np.concatenate(chunks)
+
+    def stop(self):
+        band = self.band
+        self.band = None
+        if not band:
+            return
+        try:
+            band.configure(audio=False)
+        except Exception:
+            pass
+        try:
+            band.disconnect()
+        except Exception:
+            pass
+
+
+def stop_band(band) -> None:
+    """Turn the mic off and release the band."""
+    if band is None:
+        return
+    try:
+        band.configure(audio=False)
+    except Exception:
+        pass
+    try:
+        band.disconnect()
+    except Exception:
+        pass
+
+
 def start_band(handle):
     """Listen through the Vexo band's microphone (Opus 16 kHz, 20 ms packets).
 
     Same calls as the kit's examples/python/speech.py: band.on("audio", ...) and
     band.configure(audio=True). The kit's PcmDecoder turns Opus into plain sound.
     """
-    if not config.BAND_NUMBER:
-        raise SystemExit("Set BAND_NUMBER in .env (the number on your bag). Never guess, never 42.")
-    _kit_on_path()
-    from vexo_open.sync import Band
-    from vexo_open.audio import PcmDecoder
-
-    decoder = PcmDecoder()
-    q: "queue.Queue" = queue.Queue()
-    threading.Thread(target=_worker, args=(q, handle), daemon=True).start()
-    seg = Segmenter(q.put)
-
-    def on_audio(event):
-        # Keep this fast: the band's sound waits behind a slow handler.
-        pcm = decoder.feed(event)
-        if pcm:
-            seg.feed(np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768)
-
-    transport = "serial" if config.BAND_TRANSPORT == "usb" else config.BAND_TRANSPORT
-    band = Band.connect(int(config.BAND_NUMBER), transport=transport)
-    if band.number != int(config.BAND_NUMBER):  # kit rule: always verify it's OUR band
-        band.disconnect()
-        raise SystemExit(f"Connected to band {band.number}, not ours ({config.BAND_NUMBER}). Stopped.")
+    session = BandSession(handle)
+    band = session.connect()
     print(f"Connected to band {band.number}.")
-    band.on("audio", on_audio)
-    band.configure(audio=True)  # light goes solid blue: the microphone is on
-    print("Band microphone is ON (blue light). Tell people nearby: voices go to Deepgram.")
-    # The mic is exclusive: don't run the kit's speech.py at the same time.
+    session.start_mic()
+    start_band._session = session  # keep session alive for handlers
     return band
+
+
+start_band._session = None
 
 
 def record_band(seconds: float) -> np.ndarray:

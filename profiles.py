@@ -1,4 +1,6 @@
 """Local profile store + nudges. Saved on the laptop in data/profiles.json."""
+from __future__ import annotations
+
 import datetime as dt
 import json
 import threading
@@ -11,8 +13,26 @@ _lock = threading.Lock()
 
 def _load() -> dict:
     if config.PROFILES_FILE.exists():
-        return json.loads(config.PROFILES_FILE.read_text())
-    return {"people": {}, "transcript": []}
+        db = json.loads(config.PROFILES_FILE.read_text())
+        db.setdefault("aliases", {})
+        return db
+    return {"people": {}, "transcript": [], "aliases": {}}
+
+
+def _resolve(db: dict, name: str) -> str:
+    aliases = db.get("aliases", {})
+    seen: set[str] = set()
+    while name in aliases and name not in seen:
+        seen.add(name)
+        name = aliases[name]
+    return name
+
+
+def resolve_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    with _lock:
+        return _resolve(_load(), name)
 
 
 def _save(db: dict):
@@ -64,6 +84,9 @@ def add_notes(notes: list[dict]) -> list[dict]:
         today = dt.date.today()
         for n in notes:
             person = n.get("person")
+            if person:
+                person = _resolve(db, person)
+                n["person"] = person
             if not person or (person == config.WEARER_NAME and n["category"] != "mood"):
                 continue
             if n["category"] == "mood":
@@ -111,6 +134,41 @@ def rename_person(old: str, new: str):
                 if line["speaker"] == old:
                     line["speaker"] = new
             _save(db)
+
+
+def merge_person(old: str, new: str) -> None:
+    with _lock:
+        db = _load()
+        db.setdefault("aliases", {})
+        db["aliases"][old] = new
+        old_p = db["people"].pop(old, None)
+        if old_p:
+            new_p = db["people"].get(new)
+            if new_p:
+                for n in old_p.get("notes", []):
+                    if not any(
+                        _similar(n["text"], x["text"]) and n["category"] == x["category"]
+                        for x in new_p["notes"]
+                    ):
+                        new_p["notes"].append(n)
+                if old_p.get("first_seen") and (
+                    not new_p.get("first_seen") or old_p["first_seen"] < new_p["first_seen"]
+                ):
+                    new_p["first_seen"] = old_p["first_seen"]
+                if old_p.get("last_seen") and (
+                    not new_p.get("last_seen")
+                    or (new_p.get("last_seen") or "") < (old_p.get("last_seen") or "")
+                ):
+                    new_p["last_seen"] = old_p["last_seen"]
+                if old_p.get("starred"):
+                    new_p["starred"] = True
+            else:
+                old_p["name"] = new
+                db["people"][new] = old_p
+        for line in db["transcript"]:
+            if line["speaker"] == old:
+                line["speaker"] = new
+        _save(db)
 
 
 TREAT_WORDS = ("coffee", "matcha", "tea", "latte", "boba", "chocolate", "cookie",

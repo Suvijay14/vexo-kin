@@ -27,44 +27,43 @@ Keys go in `.env` only. Never in code, git, logs, chats or band storage.
 vexo-people/
   vexo-open-kit/     <- the kit, unchanged
   config.py  voice_id.py  transcribe.py  extract.py  profiles.py
-  pipeline.py  audio_sources.py  enroll.py  server.py  web/index.html
+  pipeline.py  audio_sources.py  enroll.py  server.py  run.py  web/index.html
+  package.json       <- npm run dev
   .env               <- your keys (copy from .env.example)
 ```
 
-## Step 1: install (10 min)
+## Quick start
 ```bash
 python3 -m pip install -r requirements.txt
-cp .env.example .env     # then fill in the two keys
-git submodule update --init  # fetches the kit into vexo-open-kit/
-python3 vexo-open-kit/examples/python/check_keys.py   # the kit's key checker
+cp .env.example .env     # then fill in keys + BAND_NUMBER (number on your bag)
+git submodule update --init   # fetches the kit into vexo-open-kit/
+npm run dev                   # opens the app — press ▶ Start, double-tap the band, talk
 ```
 
-## Step 2: text mode, no audio (works immediately)
+While the band microphone is on, voices go to Deepgram (deepgram.com). Tell people nearby before you start.
+
+### On the page
+1. Press **▶ Start listening**
+2. **Double-tap** your band (light blinks blue) so the laptop can find it
+3. Talk — profiles and nudges update as you go
+4. **+ Add person** — enroll a voice in ~15 seconds (band must be listening first)
+
+## Demo / dev without a band
 ```bash
 python3 server.py
 ```
 Open http://127.0.0.1:5050, type lines like `Maya` / `I've always wanted to try pottery`
-and watch Maya's profile fill in. This tests extraction, profiles and nudges.
+and watch Maya's profile fill in.
 
-## Step 3: voices with the laptop mic
+## Legacy terminal mode (still works)
 ```bash
-python3 enroll.py Me --seconds 15      # the wearer first
-python3 enroll.py Maya --seconds 15    # each friend, in a quiet corner
-python3 server.py --mic
+python3 enroll.py Me --seconds 15
+python3 server.py --band
 ```
-Talk in turns (pause about 1 second between speakers). Unknown voices become
-"New person 1"; click "Who is this?" to name them.
-Tune `VOICE_THRESHOLD` in `.env`: wrong names → raise it; "New person" too often → lower it.
 
-## Step 4: switch to the Vexo band
-Uses the same calls as the kit's `examples/python/speech.py`: `band.on("audio", ...)`,
-`band.configure(audio=True)` and the kit's `PcmDecoder`.
-1. In `.env`: `BAND_NUMBER=7` for Vexo-HACK-07 (the number on your bag; never guess, never 42).
-   `BAND_TRANSPORT=ble` (Bluetooth), `usb` (cable) or `sim` (pretend band, sends silence).
-2. Double-tap the band so it can be found (60 seconds).
-3. Re-enroll voices through the band (different mic = slightly different voice):
-   `python3 enroll.py Me --band --seconds 15`, then each friend.
-4. `python3 server.py --band`
+## Band settings
+In `.env`: `BAND_NUMBER` (never guess, never 42), `BAND_TRANSPORT=ble` (or `usb` / `sim`).
+Tune `VOICE_THRESHOLD` if matching is too loose or too strict (0.70–0.85 typical).
 
 ## Kit rules to keep
 - Only connect to your own band; don't disable the wrong-band check. Don't touch firmware.

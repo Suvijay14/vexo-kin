@@ -1,0 +1,9 @@
+{
+  "name": "vexo-kin",
+  "private": true,
+  "scripts": {
+    "dev": "python3 run.py",
+    "listen": "python3 listen_band.py",
+    "band:test": "python3 band_smoke.py"
+  }
+}

@@ -3,26 +3,39 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vexo · People</title>
+<title>Vexo Kin</title>
 <style>
   :root { --bg:#f6f4ef; --card:#fffdf8; --ink:#1f1d1a; --muted:#8a8478; --line:#e7e2d7;
-          --accent:#e0a526; --soft:#fbf3dd; }
+          --accent:#e0a526; --soft:#fbf3dd; --ok:#2d7a4f; --err:#b44332; }
   * { box-sizing:border-box; }
   body { margin:0; font:15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, sans-serif;
-         color:var(--ink); background:var(--bg); height:100vh; display:grid;
-         grid-template-columns: 220px minmax(0,1fr) 340px; overflow:hidden; }
+         color:var(--ink); background:var(--bg); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+  header { display:flex; align-items:center; gap:14px; padding:12px 18px; border-bottom:1px solid var(--line);
+           background:var(--card); flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; font-weight:650; letter-spacing:-.02em; }
+  .pill { font-size:13px; padding:6px 12px; border-radius:999px; background:#efebe2; color:var(--muted); max-width:min(100%,420px); }
+  .pill.listening { background:#e4f4ea; color:var(--ok); }
+  .pill.connecting { background:var(--soft); color:#9a6b00; }
+  .pill.error { background:#fdecea; color:var(--err); }
+  .btn-big { margin-left:auto; padding:10px 18px; border:0; border-radius:10px; font:inherit; font-weight:600;
+             cursor:pointer; background:var(--ink); color:#fff; white-space:nowrap; }
+  .btn-big.stop { background:var(--err); }
+  .btn-add { padding:8px 14px; border:1px solid var(--line); border-radius:10px; background:#fff; font:inherit; cursor:pointer; }
+  .hint { font-size:13px; color:var(--muted); padding:8px 18px 0; }
+  .enroll-toast { font-size:13px; padding:6px 18px 10px; color:var(--ok); font-weight:600; }
+  .grid { flex:1; display:grid; grid-template-columns: 220px minmax(0,1fr) 340px; min-height:0; }
   aside, main, section { overflow:auto; min-width:0; }
   aside { border-right:1px solid var(--line); padding:18px 10px; }
-  aside h1 { font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:4px 10px 14px; }
+  aside h2 { font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:4px 10px 14px; }
   .person { padding:10px 12px; border-radius:10px; cursor:pointer; margin-bottom:2px; }
   .person:hover { background:#efebe2; }
   .person.active { background:var(--accent); color:#fff; }
   .person .sub { font-size:12px; opacity:.7; }
   main { padding:34px 44px; background:var(--card); }
-  main h2 { font-size:30px; margin:0 0 2px; }
+  main h3 { font-size:30px; margin:0 0 2px; }
   .meta { color:var(--muted); font-size:13px; margin-bottom:26px; }
   .cat { margin-bottom:22px; }
-  .cat h3 { font-size:13px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin:0 0 8px; }
+  .cat h4 { font-size:13px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin:0 0 8px; }
   .note { padding:8px 0; border-bottom:1px solid var(--line); display:flex; gap:10px; }
   .note .t { flex:1; }
   .note .q { color:var(--muted); font-size:13px; font-style:italic; }
@@ -31,11 +44,12 @@
   .new { animation: glow 2.5s ease-out; }
   @keyframes glow { from { background:var(--soft); } to { background:transparent; } }
   section { border-left:1px solid var(--line); padding:18px; }
-  section h4 { font-size:13px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin:6px 0 10px; }
+  section h5 { font-size:13px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin:6px 0 10px; }
   .nudge { background:var(--soft); border-radius:12px; padding:12px 14px; margin-bottom:10px; }
   .nudge b { display:block; }
   .nudge small { color:var(--muted); }
   .line { font-size:13px; padding:4px 0; }
+  .line.vexo-line { background:var(--soft); border-radius:8px; padding:8px 10px; margin:4px 0; color:#7a5f1a; }
   .line b { font-weight:600; }
   .empty { color:var(--muted); }
   .rename { font-size:13px; margin-left:10px; }
@@ -45,27 +59,87 @@
 </style>
 </head>
 <body>
-<aside><h1>People</h1><div id="people"></div></aside>
+<header>
+  <h1>Vexo Kin</h1>
+  <div id="pill" class="pill">Idle</div>
+  <button type="button" class="btn-big" id="bandBtn">▶ Start listening</button>
+</header>
+<p class="hint" id="hint">1. Press Start &nbsp; 2. Double-tap your band &nbsp; 3. Talk</p>
+<div class="grid">
+<aside><h2>People</h2><div id="people"></div></aside>
 <main id="profile"><p class="empty">Start talking. People you speak with will appear here.</p></main>
 <section>
-  <h4>Right now</h4><div id="nudges"></div>
-  <h4 style="margin-top:22px">Live conversation</h4><div id="transcript"></div>
+  <h5>Right now</h5><div id="nudges"></div>
+  <h5 style="margin-top:22px">Live conversation</h5><div id="transcript"></div>
   <form id="say">
     <input id="speaker" placeholder="Who" style="flex:0 0 80px">
     <input id="text" placeholder="Type a line (demo mode)">
     <button>Say</button>
   </form>
 </section>
+</div>
 <script>
 const ICON = { mood:"🌤️ Right now", favorite:"⭐ Favorites", dislike:"🚫 Dislikes", wish:"🎁 Wishes", date:"📅 Dates",
   life_now:"🌱 Life right now", people_pets:"🐾 People & pets", follow_up:"🔁 Follow-ups",
   memory:"💛 Shared memories", about:"👋 About" };
-let current = null, seen = new Set(), first = true;
+let current = null, seen = new Set(), first = true, bandStatus = "idle";
 const esc = s => (s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const post = (u, d) => fetch(u, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(d)});
+const post = (u, d) => fetch(u, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(d || {})});
+
+function updateBandUi(s) {
+  const b = s.band || { status: "idle", message: "" };
+  bandStatus = b.status;
+  const pill = document.getElementById("pill");
+  const btn = document.getElementById("bandBtn");
+  const hint = document.getElementById("hint");
+  pill.className = "pill " + (b.status === "listening" ? "listening" : b.status === "connecting" ? "connecting" : b.status === "error" ? "error" : "");
+  if (b.status === "listening") pill.textContent = "Listening ●";
+  else if (b.status === "connecting") pill.textContent = "Connecting… " + (b.message || "double-tap your band");
+  else if (b.status === "error") pill.textContent = "Error — " + (b.message || "could not connect");
+  else pill.textContent = "Idle";
+  const on = b.status === "listening" || b.status === "connecting";
+  btn.textContent = on ? "■ Stop" : "▶ Start listening";
+  btn.classList.toggle("stop", on);
+  hint.hidden = b.status !== "idle";
+}
+
+document.getElementById("bandBtn").onclick = async () => {
+  const pill = document.getElementById("pill");
+  const btn = document.getElementById("bandBtn");
+  try {
+    if (bandStatus === "listening" || bandStatus === "connecting") {
+      await post("/api/band/stop");
+    } else {
+      bandStatus = "connecting";
+      pill.className = "pill connecting";
+      pill.textContent = "Connecting… double-tap your band";
+      btn.textContent = "■ Stop";
+      btn.classList.add("stop");
+      const r = await post("/api/band/start");
+      if (!r.ok) {
+        bandStatus = "idle";
+        const j = await r.json().catch(() => ({}));
+        alert(j.error || "Could not start");
+      }
+    }
+    refresh();
+  } catch {
+    bandStatus = "idle";
+    alert("Cannot reach the server. In Terminal run: cd ~/Desktop/vexo-kin && npm run dev");
+    refresh();
+  }
+};
 
 async function refresh() {
-  let s; try { s = await (await fetch("/api/state")).json(); } catch { return; }
+  let s;
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 8000);
+    s = await (await fetch("/api/state", { signal: ctl.signal })).json();
+    clearTimeout(t);
+  } catch { return; }
+  updateBandUi(s);
+
   const people = Object.values(s.people).sort((a,b) => (b.last_seen||"").localeCompare(a.last_seen||""));
   if (!current && people.length) current = people[0].name;
   document.getElementById("people").innerHTML = people.map(p =>
@@ -78,9 +152,9 @@ async function refresh() {
     const groups = {};
     p.notes.forEach(n => (groups[n.category] ??= []).push(n));
     document.getElementById("profile").innerHTML =
-      `<h2><span id="st" style="cursor:pointer" title="Close friend">${p.starred ? "⭐" : "☆"}</span> ${esc(p.name)}${p.name.startsWith("New person") ? '<button class="rename" id="rn">Who is this?</button>' : ""}</h2>
+      `<h3><span id="st" style="cursor:pointer" title="Close friend">${p.starred ? "⭐" : "☆"}</span> ${esc(p.name)}${p.name.startsWith("New person") ? '<button class="rename" id="rn">Who is this?</button>' : ""}</h3>
        <div class="meta">First met ${esc(p.first_seen?.replace("T"," "))} · last talked ${esc((p.last_seen||"—").replace("T"," "))}</div>` +
-      (Object.keys(ICON).filter(c => groups[c]).map(c => `<div class="cat"><h3>${ICON[c]}</h3>` +
+      (Object.keys(ICON).filter(c => groups[c]).map(c => `<div class="cat"><h4>${ICON[c]}</h4>` +
         groups[c].map(n => `<div class="note ${!first && !seen.has(n.id) ? "new" : ""}"><div class="t">${esc(n.text)}
           <div class="q">“${esc(n.quote)}”</div></div>
           <div class="d">${n.event_date ? "📅 "+esc(n.event_date)+"<br>" : ""}heard ${esc(n.heard)}</div>
@@ -98,7 +172,7 @@ async function refresh() {
     `<div class="nudge"><b>${esc(n.person)} · ${esc(n.when)}</b>${esc(n.note.text)}${n.suggestion ? `<br><b style="display:inline">💡 ${esc(n.suggestion)}</b>` : ""}<br><small>“${esc(n.note.quote)}”</small></div>`).join("")
     || '<p class="empty">No nudges yet.</p>';
   document.getElementById("transcript").innerHTML = s.transcript.slice(-12).map(l =>
-    `<div class="line"><b>${esc(l.speaker)}</b>${l.score ? ` <small style="color:#aaa">${l.score}</small>` : ""}: ${esc(l.text)}</div>`).join("")
+    `<div class="line${l.speaker==="Vexo"?" vexo-line":""}"><b>${esc(l.speaker)}</b>${l.score ? ` <small style="color:#aaa">${l.score}</small>` : ""}: ${esc(l.text)}</div>`).join("")
     || '<p class="empty">Waiting for speech…</p>';
 }
 document.getElementById("say").onsubmit = e => {
@@ -106,7 +180,7 @@ document.getElementById("say").onsubmit = e => {
   const sp = document.getElementById("speaker").value || "Maya", t = document.getElementById("text");
   if (t.value) post("/api/say", {speaker:sp, text:t.value}); t.value = "";
 };
-refresh(); setInterval(refresh, 1500);
+refresh(); setInterval(refresh, 800);
 </script>
 </body>
 </html>
